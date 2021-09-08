@@ -1,0 +1,54 @@
+name: stackdriver_exporter
+
+on:
+  push:
+    branches:
+      - '**'
+
+jobs:
+  build:
+    timeout-minutes: 5
+    runs-on: ubuntu-20.04
+    strategy:
+      matrix:
+        go: [ '1.16', '1.17' ]
+    name: With Go ${{ matrix.go }}
+    steps:
+      - uses: actions/checkout@v2
+      - name: Setup go
+        uses: actions/setup-go@v2
+        with:
+          go-version: ${{ matrix.go }}
+          #precheck style check_license lint unused build test
+      - run: make precheck
+      - run: make style
+      - run: make check_license
+      - run: make lint
+      - run: make unused
+      - run: make build
+      - run: make test
+
+  build-container:
+    timeout-minutes: 5
+    needs:
+      - build
+    runs-on: ubuntu-20.04
+    name: Build And Push Container
+    steps:
+      - uses: actions/checkout@v2
+      - run: make unused
+      - run: make build
+      - run: make docker
+        env:
+          DOCKER_REPO: eu.gcr.io/ems-gap-images
+          DOCKER_IMAGE_NAME: stackdriver_exporter
+          DOCKER_IMAGE_TAG: latest
+      - uses: google-github-actions/setup-gcloud@master
+        if: ${{ github.ref == 'refs/heads/emarsys' || github.ref == 'refs/heads/release' }}
+        with:
+          project_id: ems-gap-images
+          service_account_key: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
+      - if: ${{ github.ref == 'refs/heads/emarsys' || github.ref == 'refs/heads/release' }}
+        run: |
+          gcloud auth configure-docker
+          docker push eu.gcr.io/ems-gap-images/stackdriver_exporter-linux-amd64:latest
