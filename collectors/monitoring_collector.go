@@ -387,6 +387,10 @@ func (c *MonitoringCollector) reportTimeSeriesMetrics(
 			metricValue = *newestTSPoint.Value.DoubleValue
 		case "DISTRIBUTION":
 			dist := newestTSPoint.Value.DistributionValue
+			if dist == nil {
+				level.Debug(c.logger).Log("msg", "discarding", "resource", timeSeries.Resource.Type, "metric", timeSeries.Metric.Type, "err", "Point without distribution value")
+				continue
+			}
 			buckets, err := c.generateHistogramBuckets(dist)
 			if err == nil {
 				timeSeriesMetrics.CollectNewConstHistogram(timeSeries, newestEndTime, labelKeys, dist, buckets, labelValues)
