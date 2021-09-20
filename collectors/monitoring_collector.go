@@ -220,7 +220,6 @@ func (c *MonitoringCollector) reportMonitoringMetrics(ch chan<- prometheus.Metri
 		for _, descriptor := range page.MetricDescriptors {
 			uniqueDescriptors[descriptor.Type] = descriptor
 		}
-
 		errChannel := make(chan error, len(uniqueDescriptors))
 
 		endTime := time.Now().UTC().Add(c.metricsOffset * -1)
@@ -252,6 +251,12 @@ func (c *MonitoringCollector) reportMonitoringMetrics(ch chan<- prometheus.Metri
 						break
 					}
 					if page == nil {
+						break
+					}
+					if len(page.ExecutionErrors) > 0 {
+						// `Query execution errors that may have caused the time series data returned to be incomplete.`
+						level.Error(c.logger).Log("msg", "executing errors while fetching time series", "descriptor", metricDescriptor.Type, "err", page.ExecutionErrors)
+						errChannel <- err
 						break
 					}
 					if err := c.reportTimeSeriesMetrics(page, metricDescriptor, ch); err != nil {
@@ -290,9 +295,11 @@ func (c *MonitoringCollector) reportMonitoringMetrics(ch chan<- prometheus.Metri
 					c.projectID,
 					metricsTypePrefix)
 			}
-			if err := c.monitoringService.Projects.MetricDescriptors.List(utils.ProjectResource(c.projectID)).
+			err := c.monitoringService.Projects.MetricDescriptors.List(utils.ProjectResource(c.projectID)).
 				Filter(filter).
-				Pages(ctx, metricDescriptorsFunction); err != nil {
+				Pages(ctx, metricDescriptorsFunction)
+
+			if err != nil {
 				errChannel <- err
 			}
 		}(metricsTypePrefix)
